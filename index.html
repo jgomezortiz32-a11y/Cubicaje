@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#14213d">
+<title>Cubicaje</title>
+<style>
+  :root{--bg:#0f1626;--panel:#18223a;--line:#2a3756;--txt:#e8edf7;--mut:#93a1bd;--acc:#2ec4b6;--warn:#ffb703;--err:#ef476f;--ok:#06d6a0}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#14213d;position:sticky;top:0;z-index:5}
+  header h1{font-size:16px;margin:0 8px 0 0;white-space:nowrap}
+  nav{display:flex;gap:4px;overflow-x:auto}
+  nav button{background:transparent;border:1px solid var(--line);color:var(--mut);padding:6px 12px;border-radius:8px;font-size:14px}
+  nav button.on{background:var(--acc);color:#04211e;border-color:var(--acc);font-weight:600}
+  main{padding:10px;max-width:1200px;margin:0 auto}
+  section{display:none}
+  section.on{display:block}
+  .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:10px}
+  @media (max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .card h3{margin:0 0 8px;font-size:15px}
+  .viewer{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden}
+  .viewer video,.viewer canvas{width:100%;display:block}
+  .viewer canvas.ov{position:absolute;inset:0;height:100%;pointer-events:none}
+  button.b{background:#24314f;color:var(--txt);border:1px solid var(--line);padding:10px 14px;border-radius:10px;font-size:15px}
+  button.b:active{transform:scale(.98)}
+  button.p{background:var(--acc);color:#04211e;border-color:var(--acc);font-weight:700}
+  button.big{width:100%;padding:16px;font-size:20px}
+  button:disabled{opacity:.45}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+  input,select{background:#0c1322;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:16px;min-width:0}
+  label.f{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mut);flex:1 1 140px}
+  .dims{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .dims label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:2px}
+  .dims input{font-size:22px;font-weight:700;text-align:center;padding:8px 2px;width:100%}
+  .msg{padding:8px 10px;border-radius:8px;margin:6px 0;font-size:14px;background:#0c1322;border-left:4px solid var(--mut)}
+  .msg.ok{border-color:var(--ok)}.msg.warn{border-color:var(--warn)}.msg.err{border-color:var(--err)}
+  .mut{color:var(--mut);font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;white-space:nowrap}
+  .tblwrap{overflow-x:auto}
+  .pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:#24314f}
+  .pill.ok{background:#0b4d3c}.pill.warn{background:#5a4300}
+  .steps{display:flex;gap:6px;flex-wrap:wrap}
+  .steps span{padding:4px 10px;border-radius:99px;background:#24314f;font-size:13px}
+  .steps span.done{background:#0b4d3c}
+  .tap{position:relative;touch-action:none}
+  .tap canvas{width:100%;display:none;border-radius:10px}
+  .tap canvas.has{display:block}
+  #loupe{position:fixed;width:150px;height:150px;border-radius:50%;border:3px solid var(--acc);pointer-events:none;display:none;z-index:20;background:#000}
+  .hint{font-size:16px;font-weight:600;margin:6px 0}
+  svg text{font:bold 13px system-ui;fill:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Cubicaje</h1>
+  <nav id="nav">
+    <button data-t="medir" class="on">Medir</button>
+    <button data-t="calibrar">Calibrar</button>
+    <button data-t="ajustes">Ajustes</button>
+  </nav>
+</header>
+<canvas id="loupe" width="150" height="150"></canvas>
+
+<main>
+<!-- ============ MEDIR ============ -->
+<section id="t-medir" class="on">
+  <div class="grid">
+    <div>
+      <div class="viewer" id="viewMedir">
+        <video id="video" playsinline muted autoplay></video>
+        <canvas class="ov" id="ovMedir"></canvas>
+      </div>
+      <div class="row">
+        <button class="b" id="btnCam">Activar cámara</button>
+        <button class="b" id="btnFondo">Capturar fondo vacío</button>
+        <span class="mut" id="fondoEstado"></span>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>1. Código</h3>
+        <div class="row">
+          <input id="sku" placeholder="Código / SKU" inputmode="text" style="flex:1" autocomplete="off">
+          <button class="b" id="btnScan">Leer</button>
+        </div>
+        <div class="mut" id="scanEstado"></div>
+      </div>
+      <div class="card">
+        <h3>2. Caja en la esquina → medir</h3>
+        <button class="b p big" id="btnMedir">MEDIR</button>
+        <div id="medirMsg"></div>
+      </div>
+      <div class="card">
+        <h3>3. Revisar y enviar a la planilla</h3>
+        <div class="dims">
+          <label>Largo mm<input id="vL" inputmode="numeric"></label>
+          <label>Ancho mm<input id="vA" inputmode="numeric"></label>
+          <label>Alto mm<input id="vH" inputmode="numeric"></label>
+          <label>Peso kg<input id="vP" inputmode="decimal"></label>
+        </div>
+        <div class="row">
+          <button class="b p" id="btnConfirmar" style="flex:1" disabled>Confirmar y enviar</button>
+          <button class="b" id="btnRepetir">Repetir</button>
+        </div>
+        <div id="envioMsg"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CALIBRAR ============ -->
+<section id="t-calibrar">
+  <div class="card">
+    <h3>Estado de calibración</h3>
+    <div class="steps" id="calSteps"></div>
+    <p class="mut">Calibra una vez con el celular ya fijo. Si el soporte se mueve, repite los pasos 2 y 3.</p>
+  </div>
+
+  <div class="card">
+    <h3>Paso 1 · Fondo vacío</h3>
+    <p class="mut">Plataforma vacía, solo con la escuadra puesta. Nada ni nadie en la imagen.</p>
+    <button class="b" id="btnFondo2">Capturar fondo vacío</button> <span class="mut" id="fondoEstado2"></span>
+  </div>
+
+  <div class="card">
+    <h3>Paso 2 · Geometría con el cubo (3 posiciones)</h3>
+    <div class="grid">
+      <div>
+        <div class="row">
+          <button class="b" data-pos="A">Foto posición A</button>
+          <button class="b" data-pos="B">Foto posición B</button>
+          <button class="b" data-pos="C">Foto posición C</button>
+        </div>
+        <div class="msg" id="posInstr">Elige una posición para tomar la foto.</div>
+        <div class="hint" id="tapHint"></div>
+        <div class="tap" id="tapWrap"><canvas id="tapCanvas"></canvas></div>
+        <div class="row">
+          <button class="b" id="btnUndo">Deshacer punto</button>
+          <button class="b p" id="btnCalc">Calcular calibración</button>
+        </div>
+        <div id="calMsg"></div>
+      </div>
+      <div>
+        <p class="mut">Toca las esquinas del cubo en este orden. Mantén el dedo y arrastra: la lupa te ayuda a ser exacto; al soltar, se marca el punto.</p>
+        <svg viewBox="0 0 260 230" width="100%" style="max-width:320px;background:#0c1322;border-radius:10px">
+          <polygon points="130,40 215,75 130,110 45,75" fill="#c0392b" stroke="#fff"/>
+          <polygon points="45,75 130,110 130,200 45,165" fill="#f1c40f" stroke="#fff"/>
+          <polygon points="130,110 215,75 215,165 130,200" fill="#2e86de" stroke="#fff"/>
+          <g>
+            <circle cx="130" cy="40" r="11" fill="#000"/><text x="126" y="45">1</text>
+            <circle cx="215" cy="75" r="11" fill="#000"/><text x="211" y="80">2</text>
+            <circle cx="130" cy="110" r="11" fill="#000"/><text x="126" y="115">3</text>
+            <circle cx="45" cy="75" r="11" fill="#000"/><text x="41" y="80">4</text>
+            <circle cx="45" cy="165" r="11" fill="#000"/><text x="41" y="170">5</text>
+            <circle cx="130" cy="200" r="11" fill="#000"/><text x="126" y="205">6</text>
+            <circle cx="215" cy="165" r="11" fill="#000"/><text x="211" y="170">7</text>
+          </g>
+        </svg>
+        <p class="mut">Vista desde el celular: cara roja arriba, amarilla al frente, azul a la derecha. La esquina 3 es la más cercana al celular; la escuadra queda detrás y a la izquierda del cubo.</p>
+        <ul class="mut">
+          <li><b>A:</b> cubo en la esquina de la escuadra.</li>
+          <li><b>B:</b> cubo contra el brazo trasero, con su cara izquierda en la marca <b id="lblDx">150</b> mm.</li>
+          <li><b>C:</b> cubo contra el brazo izquierdo, con su cara trasera en la marca <b id="lblDy">100</b> mm.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Paso 3 · Visor de peso</h3>
+    <p class="mut">Toma una foto y arrastra un rectángulo que encierre solo los dígitos del visor WEIGHT (kg), incluido el espacio del primer dígito apagado.</p>
+    <div class="row">
+      <button class="b" id="btnVisorFoto">Foto del visor</button>
+      <label class="f">Celdas de dígitos<input id="cDig" type="number" min="1" max="8"></label>
+      <label class="f">Decimales<input id="cDec" type="number" min="0" max="4"></label>
+      <label class="f">Inclinación dígitos<input id="cSlant" type="number" step="0.02"></label>
+    </div>
+    <div class="tap" id="roiWrap"><canvas id="roiCanvas"></canvas></div>
+    <div class="row">
+      <canvas id="ocrDebug" width="1" height="1" style="background:#000;border-radius:8px;max-width:100%"></canvas>
+      <div><div class="mut">Lectura en vivo</div><div id="ocrLive" style="font-size:28px;font-weight:800">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Paso 4 · Verificación con el cubo</h3>
+    <p class="mut">Pon el cubo solo, en la esquina de la escuadra, y mide. Debe dar el tamaño del cubo dentro de la tolerancia.</p>
+    <button class="b p" id="btnVerif">Medir cubo</button>
+    <div id="verifMsg"></div>
+  </div>
+</section>
+
+<!-- ============ AJUSTES ============ -->
+<section id="t-ajustes">
+  <div class="card">
+    <h3>Envío a Google Sheets</h3>
+    <div class="row">
+      <label class="f" style="flex:3 1 300px">URL de la aplicación web (Apps Script)<input id="cUrl" placeholder="https://script.google.com/macros/s/.../exec"></label>
+      <label class="f">Clave (token)<input id="cToken"></label>
+    </div>
+    <div class="row">
+      <label class="f">Operador<input id="cOper"></label>
+      <button class="b" id="btnTest">Probar conexión</button>
+    </div>
+    <div id="testMsg"></div>
+  </div>
+  <div class="card">
+    <h3>Medición</h3>
+    <div class="row">
+      <label class="f">Tolerancia (± mm)<input id="cTol" type="number"></label>
+      <label class="f">Lado del cubo (mm)<input id="cS" type="number" step="0.1"></label>
+      <label class="f">Marca posición B (mm)<input id="cDx" type="number"></label>
+      <label class="f">Marca posición C (mm)<input id="cDy" type="number"></label>
+    </div>
+    <div class="row">
+      <label class="f">Sensibilidad de detección (10–60)<input id="cThr" type="number"></label>
+      <label class="f">Error máx. de contorno (px)<input id="cRes" type="number" step="0.5"></label>
+      <label class="f">Bloquear exposición tras fondo <select id="cLock"><option value="1">Sí</option><option value="0">No</option></select></label>
+    </div>
+    <button class="b p" id="btnGuardar">Guardar ajustes</button> <span class="mut" id="guardMsg"></span>
+  </div>
+</section>
+</main>
+
+<script>
+/* =====================================================================
+   CORE: geometría, visión y lectura del visor (sin dependencias)
+   ===================================================================== */
+const Core = (() => {
+
+  // ---------- Álgebra ----------
+  function jacobiEigen(Ain){
+    const n = Ain.length, A = Ain.map(r => r.slice());
+    const V = Array.from({length:n}, (_, i) => Array.from({length:n}, (_, j) => i === j ? 1 : 0));
+    for (let sweep = 0; sweep < 100; sweep++){
+      let off = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
+      if (off < 1e-22) break;
+      for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++){
+        if (Math.abs(A[p][q]) < 1e-300) continue;
+        const th = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+        const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+        const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+        for (let k = 0; k < n; k++){
+          const akp = A[k][p], akq = A[k][q];
+          A[k][p] = c * akp - s * akq; A[k][q] = s * akp + c * akq;
+        }
+        for (let k = 0; k < n; k++){
+          const apk = A[p][k], aqk = A[q][k];
+          A[p][k] = c * apk - s * aqk; A[q][k] = s * apk + c * aqk;
+        }
+        for (let k = 0; k < n; k++){
+          const vkp = V[k][p], vkq = V[k][q];
+          V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq;
+        }
+      }
+    }
+    return { values: A.map((r, i) => r[i]), vectors: V };
+  }
+  const matMul = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+  function inv3(m){
+    const [a,b,c] = m[0], [d,e,f] = m[1], [g,h,i] = m[2];
+    const A = e*i - f*h, B = -(d*i - f*g), C = d*h - e*g;
+    const det = a*A + b*B + c*C;
+    return [[A/det, -(b*i - c*h)/det, (b*f - c*e)/det],
+            [B/det, (a*i - c*g)/det, -(a*f - c*d)/det],
+            [C/det, -(a*h - b*g)/det, (a*e - b*d)/det]];
+  }
+
+  // ---------- Calibración DLT (Hartley normalizada) ----------
+  function dlt(world, img){
+    const n = world.length;
+    const mi = img.reduce((s, p) => [s[0] + p[0] / n, s[1] + p[1] / n], [0, 0]);
+    const di = img.reduce((s, p) => s + Math.hypot(p[0] - mi[0], p[1] - mi[1]), 0) / n;
+    const si = Math.SQRT2 / di;
+    const T = [[si, 0, -si * mi[0]], [0, si, -si * mi[1]], [0, 0, 1]];
+    const mw = world.reduce((s, p) => [s[0] + p[0] / n, s[1] + p[1] / n, s[2] + p[2] / n], [0, 0, 0]);
+    const dw = world.reduce((s, p) => s + Math.hypot(p[0] - mw[0], p[1] - mw[1], p[2] - mw[2]), 0) / n;
+    const sw = Math.sqrt(3) / dw;
+    const U = [[sw,0,0,-sw*mw[0]],[0,sw,0,-sw*mw[1]],[0,0,sw,-sw*mw[2]],[0,0,0,1]];
+    const M = Array.from({length:12}, () => new Array(12).fill(0));
+    for (let k = 0; k < n; k++){
+      const X = world[k][0]*sw - sw*mw[0], Y = world[k][1]*sw - sw*mw[1], Z = world[k][2]*sw - sw*mw[2];
+      const u = img[k][0]*si - si*mi[0], v = img[k][1]*si - si*mi[1];
+      const r1 = [X,Y,Z,1, 0,0,0,0, -u*X,-u*Y,-u*Z,-u];
+      const r2 = [0,0,0,0, X,Y,Z,1, -v*X,-v*Y,-v*Z,-v];
+      for (const r of [r1, r2]) for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) M[i][j] += r[i] * r[j];
+    }
+    const { values, vectors } = jacobiEigen(M);
+    let mi_ = 0; values.forEach((v, i) => { if (v < values[mi_]) mi_ = i; });
+    const p = vectors.map(r => r[mi_]);
+    const Pn = [p.slice(0,4), p.slice(4,8), p.slice(8,12)];
+    let P = matMul(matMul(inv3(T), Pn), U);
+    // Normalizar signo: los puntos deben quedar delante de la cámara (w > 0)
+    const w0 = P[2][0]*world[0][0] + P[2][1]*world[0][1] + P[2][2]*world[0][2] + P[2][3];
+    const sc = (w0 < 0 ? -1 : 1) / Math.hypot(P[2][0], P[2][1], P[2][2]);
+    P = P.map(r => r.map(v => v * sc));
+    const errs = world.map((w, k) => { const q = project(P, w); return Math.hypot(q[0] - img[k][0], q[1] - img[k][1]); });
+    return { P, rms: Math.sqrt(errs.reduce((s, e) => s + e * e, 0) / n), max: Math.max(...errs) };
+  }
+  function project(P, w){
+    const u = P[0][0]*w[0] + P[0][1]*w[1] + P[0][2]*w[2] + P[0][3];
+    const v = P[1][0]*w[0] + P[1][1]*w[1] + P[1][2]*w[2] + P[1][3];
+    const s = P[2][0]*w[0] + P[2][1]*w[1] + P[2][2]*w[2] + P[2][3];
+    return [u / s, v / s];
+  }
+  // Esquinas visibles del cubo (orden del instructivo), con desplazamiento dx, dy
+  function cubeCorners(S, dx = 0, dy = 0){
+    return [[0,0,S],[S,0,S],[S,S,S],[0,S,S],[0,S,0],[S,S,0],[S,0,0]].map(p => [p[0] + dx, p[1] + dy, p[2]]);
+  }
+  function boxCorners(X, Y, H){
+    const c = [];
+    for (const x of [0, X]) for (const y of [0, Y]) for (const z of [0, H]) c.push([x, y, z]);
+    return c;
+  }
+
+  // ---------- Segmentación por diferencia con el fondo ----------
+  function segment(cur, bg, w, h, thr, exclude){
+    const m = new Uint8Array(w * h), a = cur.data, b = bg.data;
+    for (let i = 0, p = 0; p < w * h; p++, i += 4){
+      const r = a[i], g = a[i+1], bl = a[i+2], R = b[i], G = b[i+1], B = b[i+2];
+      const d = Math.max(Math.abs(r - R), Math.abs(g - G), Math.abs(bl - B));
+      if (d < thr) continue;
+      // Supresión de sombras: más oscuro pero con el mismo color
+      const Ic = r + g + bl + 1, Ib = R + G + B + 1, ratio = Ic / Ib;
+      if (ratio > 0.35 && ratio < 0.97){
+        const cd = Math.abs(r / Ic - R / Ib) + Math.abs(g / Ic - G / Ib);
+        if (cd < 0.045) continue;
+      }
+      m[p] = 1;
+    }
+    if (exclude) for (const e of exclude){
+      const x0 = Math.max(0, e.x|0), y0 = Math.max(0, e.y|0), x1 = Math.min(w, (e.x + e.w)|0), y1 = Math.min(h, (e.y + e.h)|0);
+      for (let y = y0; y < y1; y++) m.fill(0, y * w + x0, y * w + x1);
+    }
+    return m;
+  }
+  function morph(m, w, h, r, erode){
+    const t = new Uint8Array(w * h), o = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++){
+      const row = y * w;
+      for (let x = 0; x < w; x++){
+        let v = erode ? 1 : 0;
+        for (let k = -r; k <= r; k++){
+          const xx = x + k;
+          const s = (xx < 0 || xx >= w) ? 0 : m[row + xx];
+          if (erode){ if (!s){ v = 0; break; } } else if (s){ v = 1; break; }
+        }
+        t[row + x] = v;
+      }
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+      let v = erode ? 1 : 0;
+      for (let k = -r; k <= r; k++){
+        const yy = y + k;
+        const s = (yy < 0 || yy >= h) ? 0 : t[yy * w + x];
+        if (erode){ if (!s){ v = 0; break; } } else if (s){ v = 1; break; }
+      }
+      o[y * w + x] = v;
+    }
+    return o;
+  }
+  function largestComponent(m, w, h){
+    const lab = new Int32Array(w * h), stack = new Int32Array(w * h);
+    let cur = 0, best = 0, bestN = 0;
+    for (let s = 0; s < w * h; s++){
+      if (!m[s] || lab[s]) continue;
+      cur++; let sp = 0, n = 0; stack[sp++] = s; lab[s] = cur;
+      while (sp){
+        const p = stack[--sp]; n++;
+        const x = p % w, y = (p / w) | 0;
+        if (x > 0 && m[p-1] && !lab[p-1]){ lab[p-1] = cur; stack[sp++] = p-1; }
+        if (x < w-1 && m[p+1] && !lab[p+1]){ lab[p+1] = cur; stack[sp++] = p+1; }
+        if (y > 0 && m[p-w] && !lab[p-w]){ lab[p-w] = cur; stack[sp++] = p-w; }
+        if (y < h-1 && m[p+w] && !lab[p+w]){ lab[p+w] = cur; stack[sp++] = p+w; }
+      }
+      if (n > bestN){ bestN = n; best = cur; }
+    }
+    if (!best) return null;
+    const pts = []; let border = false;
+    for (let y = 0; y < h; y++){
+      let first = -1, last = -1;
+      for (let x = 0; x < w; x++) if (lab[y*w + x] === best){ if (first < 0) first = x; last = x; }
+      if (first >= 0){
+        pts.push([first + 0.5, y + 0.5], [last + 0.5, y + 0.5]);  // centros de píxel: evita sobrestimar por bordes suavizados
+        if (first === 0 || last === w - 1 || y === 0 || y === h - 1) border = true;
+      }
+    }
+    return { pts, area: bestN, border };
+  }
+  function hull(P){
+    const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (p.length < 3) return p;
+    const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+    const lo = [], up = [];
+    for (const q of p){ while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], q) <= 0) lo.pop(); lo.push(q); }
+    for (let i = p.length - 1; i >= 0; i--){ const q = p[i]; while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], q) <= 0) up.pop(); up.push(q); }
+    up.pop(); lo.pop();
+    return lo.concat(up);
+  }
+  function resample(poly, n){
+    const L = []; let tot = 0;
+    for (let i = 0; i < poly.length; i++){ const a = poly[i], b = poly[(i+1) % poly.length]; const l = Math.hypot(b[0]-a[0], b[1]-a[1]); L.push(l); tot += l; }
+    const out = []; let seg = 0, acc = 0;
+    for (let k = 0; k < n; k++){
+      const t = k * tot / n;
+      while (seg < poly.length - 1 && acc + L[seg] < t){ acc += L[seg]; seg++; }
+      const a = poly[seg], b = poly[(seg+1) % poly.length], f = L[seg] ? (t - acc) / L[seg] : 0;
+      out.push([a[0] + (b[0]-a[0]) * f, a[1] + (b[1]-a[1]) * f]);
+    }
+    return out;
+  }
+  function distPoly(q, poly){
+    let best = Infinity;
+    for (let i = 0; i < poly.length; i++){
+      const a = poly[i], b = poly[(i+1) % poly.length];
+      const dx = b[0]-a[0], dy = b[1]-a[1], l2 = dx*dx + dy*dy;
+      let t = l2 ? ((q[0]-a[0])*dx + (q[1]-a[1])*dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(q[0] - a[0] - t*dx, q[1] - a[1] - t*dy);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  function nelderMead(f, x0, step, iters = 400){
+    const n = x0.length;
+    let S = [x0.slice()];
+    for (let i = 0; i < n; i++){ const x = x0.slice(); x[i] += step[i]; S.push(x); }
+    let F = S.map(f);
+    for (let it = 0; it < iters; it++){
+      const idx = F.map((v, i) => i).sort((a, b) => F[a] - F[b]);
+      S = idx.map(i => S[i]); F = idx.map(i => F[i]);
+      if (Math.abs(F[n] - F[0]) < 1e-7 && it > 30) break;
+      const c = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) c[j] += S[i][j] / n;
+      const xr = c.map((v, j) => v + (v - S[n][j])), fr = f(xr);
+      if (fr < F[0]){
+        const xe = c.map((v, j) => v + 2 * (v - S[n][j])), fe = f(xe);
+        if (fe < fr){ S[n] = xe; F[n] = fe; } else { S[n] = xr; F[n] = fr; }
+      } else if (fr < F[n-1]){ S[n] = xr; F[n] = fr; }
+      else {
+        const xc = c.map((v, j) => v + 0.5 * (S[n][j] - v)), fc = f(xc);
+        if (fc < F[n]){ S[n] = xc; F[n] = fc; }
+        else for (let i = 1; i <= n; i++){ S[i] = S[i].map((v, j) => S[0][j] + 0.5 * (v - S[0][j])); F[i] = f(S[i]); }
+      }
+    }
+    let b = 0; F.forEach((v, i) => { if (v < F[b]) b = i; });
+    return { x: S[b], f: F[b] };
+  }
+
+  // ---------- Ajuste de la caja a la silueta ----------
+  // La caja está apoyada en la esquina (origen), ocupa [0,X]×[0,Y]×[0,H]
+  function fitBox(P, det){
+    const detPoly = hull(det.pts);
+    if (detPoly.length < 3) return null;
+    const detS = resample(detPoly, 96);
+    const cost = (x) => {
+      const [X, Y, H] = x;
+      if (X < 5 || Y < 5 || H < 5) return 1e6 + 1e3 * (Math.max(0, 5 - X) + Math.max(0, 5 - Y) + Math.max(0, 5 - H));
+      const pp = hull(boxCorners(X, Y, H).map(c => project(P, c)));
+      const pS = resample(pp, 96);
+      let a = 0, b = 0;
+      for (const q of detS) a += distPoly(q, pp);
+      for (const q of pS) b += distPoly(q, detPoly);
+      return (a + b) / 192;
+    };
+    let best = null;
+    const G = [40, 80, 150, 250, 400, 650, 950];
+    for (const X of G) for (const Y of G) for (const H of G){
+      const c = cost([X, Y, H]);
+      if (!best || c < best.f) best = { x: [X, Y, H], f: c };
+    }
+    let r = nelderMead(cost, best.x, [best.x[0] * 0.2, best.x[1] * 0.2, best.x[2] * 0.2]);
+    r = nelderMead(cost, r.x, [5, 5, 5]);
+    return { X: r.x[0], Y: r.x[1], H: r.x[2], res: r.f, detPoly };
+  }
+
+  function analyze(cur, bg, w, h, P, opts){
+    let m = segment(cur, bg, w, h, opts.thr, opts.exclude);
+    m = morph(morph(m, w, h, 2, true), w, h, 2, false);  // apertura: quita ruido
+    m = morph(morph(m, w, h, 3, false), w, h, 3, true);  // cierre: rellena huecos
+    const comp = largestComponent(m, w, h);
+    if (!comp || comp.area < 400) return { error: 'No se detecta ninguna caja.' };
+    const fit = fitBox(P, comp);
+    if (!fit) return { error: 'Silueta no válida.' };
+    fit.border = comp.border; fit.mask = m;
+    return fit;
+  }
+
+  // ---------- Lectura del visor de 7 segmentos ----------
+  const SEG = { '1111110':'0','0110000':'1','1101101':'2','1111001':'3','0110011':'4','1011011':'5','1011111':'6','0011111':'6',
+                '1110000':'7','1110010':'7','1111111':'8','1111011':'9','1110011':'9','0000000':' ','0000001':'-' };
+  function otsu(gray){
+    const hist = new Array(256).fill(0); for (const g of gray) hist[g]++;
+    const tot = gray.length; let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sB = 0, wB = 0, best = 0, th = 127;
+    for (let t = 0; t < 256; t++){
+      wB += hist[t]; if (!wB) continue; const wF = tot - wB; if (!wF) break;
+      sB += t * hist[t]; const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2;
+      if (v > best){ best = v; th = t; }
+    }
+    return th;
+  }
+  function readSevenSeg(img, opts){
+    const { width: w, height: h, data } = img;
+    const gray = new Uint8Array(w * h);
+    for (let i = 0, p = 0; p < w * h; p++, i += 4) gray[p] = (data[i] * 0.3 + data[i+1] * 0.59 + data[i+2] * 0.11) | 0;
+    const th = otsu(gray);
+    const on = (x, y) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= w || y >= h) return 0; const g = gray[y * w + x]; return opts.invert ? g > th : g < th; };
+    const n = opts.digits, cw = w / n, boxes = [];
+    // [centro u, centro v, ancho, alto] en fracción de celda
+    const S = [[0.5,0.07,0.40,0.09],[0.84,0.28,0.14,0.26],[0.84,0.72,0.14,0.26],[0.5,0.93,0.40,0.09],[0.16,0.72,0.14,0.26],[0.16,0.28,0.14,0.26],[0.5,0.5,0.40,0.09]];
+    let txt = '';
+    for (let d = 0; d < n; d++){
+      let bits = '';
+      for (const s of S){
+        const shift = opts.slant * (0.5 - s[1]) * h;
+        const x0 = d * cw + (s[0] - s[2] / 2) * cw + shift, y0 = (s[1] - s[3] / 2) * h;
+        const bw = s[2] * cw, bh = s[3] * h;
+        let cnt = 0, tot = 0;
+        for (let yy = 0; yy < 5; yy++) for (let xx = 0; xx < 5; xx++){ tot++; if (on(x0 + (xx + 0.5) * bw / 5, y0 + (yy + 0.5) * bh / 5)) cnt++; }
+        const lit = cnt / tot > 0.45; bits += lit ? '1' : '0';
+        boxes.push({ x: x0, y: y0, w: bw, h: bh, lit });
+      }
+      txt += SEG[bits] ?? '?';
+    }
+    const t = txt.trim();
+    let value = null;
+    if (t && !t.includes('?') && !t.includes(' ') && /^-?\d+$/.test(t)) value = parseInt(t, 10) / Math.pow(10, opts.decimals);
+    return { value, text: txt, boxes, th };
+  }
+
+  return { dlt, project, cubeCorners, boxCorners, segment, morph, largestComponent, hull, fitBox, analyze, readSevenSeg, nelderMead };
+})();
+
+/* =====================================================================
+   APP
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const AW = 1280;                     // ancho de análisis (px)
+const store = {
+  get(k, d){ try { const v = localStorage.getItem('cub_' + k); return v == null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem('cub_' + k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+};
+const DEF = { url:'', token:'', oper:'', tol:3, S:100, Dx:150, Dy:100, thr:28, resMax:4, lock:'1', dig:5, dec:3, slant:0.08 };
+let cfg = Object.assign({}, DEF, store.get('cfg', {}));
+let cal = store.get('cal', { pts:{}, P:null, rms:null, roi:null, aw:null, ah:null });
+let bg = null, AH = 720, stream = null, track = null, last = null, scanning = false;
+
+function msg(el, text, kind){ $(el).innerHTML = text ? `<div class="msg ${kind || ''}">${text}</div>` : ''; }
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ---------- Pestañas ----------
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === 't-' + b.dataset.t));
+  if (b.dataset.t === 'calibrar') renderSteps();
+});
+
+// ---------- Cámara ----------
+async function startCam(){
+  if (stream) return true;
+  if (!navigator.mediaDevices?.getUserMedia){ msg('medirMsg', 'Este navegador no permite usar la cámara. Abre la app desde Chrome en una dirección https.', 'err'); return false; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } } });
+  } catch(e){ msg('medirMsg', 'No se pudo abrir la cámara: ' + e.message, 'err'); return false; }
+  const v = $('video'); v.srcObject = stream; await v.play().catch(() => {});
+  await new Promise(r => v.videoWidth ? r() : v.onloadedmetadata = r);
+  track = stream.getVideoTracks()[0];
+  AH = Math.round(AW * v.videoHeight / v.videoWidth);
+  try { await navigator.wakeLock?.request('screen'); } catch(e){}
+  $('btnCam').textContent = 'Cámara activa'; $('btnCam').disabled = true;
+  if (cal.aw && cal.ah && Math.abs(cal.ah / cal.aw - AH / AW) > 0.01)
+    msg('medirMsg', 'La resolución de la cámara cambió desde la calibración. Repite la calibración.', 'warn');
+  requestAnimationFrame(drawLive);
+  return true;
+}
+async function lockExposure(lock){
+  if (!track?.getCapabilities) return;
+  const c = track.getCapabilities(), adv = {};
+  if (c.exposureMode?.includes(lock ? 'manual' : 'continuous')) adv.exposureMode = lock ? 'manual' : 'continuous';
+  if (c.whiteBalanceMode?.includes(lock ? 'manual' : 'continuous')) adv.whiteBalanceMode = lock ? 'manual' : 'continuous';
+  if (c.focusMode?.includes(lock ? 'manual' : 'continuous')) adv.focusMode = lock ? 'manual' : 'continuous';
+  try { if (Object.keys(adv).length) await track.applyConstraints({ advanced:[adv] }); } catch(e){}
+}
+const grabCv = document.createElement('canvas');
+function grab(w = AW, h = AH){
+  const v = $('video'); grabCv.width = w; grabCv.height = h;
+  const g = grabCv.getContext('2d', { willReadFrequently:true }); g.drawImage(v, 0, 0, w, h);
+  return g.getImageData(0, 0, w, h);
+}
+function grabFrameAvg(n){
+  const frames = []; for (let i = 0; i < n; i++) frames.push(grab());
+  const out = new ImageData(AW, AH);
+  for (let i = 0; i < out.data.length; i++){ let s = 0; for (const f of frames) s += f.data[i]; out.data[i] = s / n; }
+  return out;
+}
+function roiPx(){ // ROI del visor en coordenadas de análisis
+  if (!cal.roi) return null;
+  return { x: cal.roi.x * AW, y: cal.roi.y * AH, w: cal.roi.w * AW, h: cal.roi.h * AH };
+}
+const ocrCv = document.createElement('canvas');
+function readWeight(){
+  if (!cal.roi) return null;
+  const v = $('video'), r = cal.roi;
+  const sw = Math.max(8, Math.round(r.w * v.videoWidth)), sh = Math.max(8, Math.round(r.h * v.videoHeight));
+  ocrCv.width = sw; ocrCv.height = sh;
+  const g = ocrCv.getContext('2d', { willReadFrequently:true });
+  g.drawImage(v, r.x * v.videoWidth, r.y * v.videoHeight, sw, sh, 0, 0, sw, sh);
+  return Core.readSevenSeg(g.getImageData(0, 0, sw, sh), { digits:+cfg.dig, decimals:+cfg.dec, slant:+cfg.slant, invert:false });
+}
+async function stableWeight(ms = 3500){
+  const t0 = performance.now(); let lastV = null, cnt = 0;
+  while (performance.now() - t0 < ms){
+    const r = readWeight();
+    if (r && r.value != null){ if (r.value === lastV) cnt++; else { lastV = r.value; cnt = 1; } if (cnt >= 4) return lastV; }
+    await sleep(150);
+  }
+  return null;
+}
+
+// ---------- Vista en vivo ----------
+function drawLive(){
+  const ov = $('ovMedir'), v = $('video');
+  if (v.videoWidth){
+    ov.width = AW; ov.height = AH;
+    const g = ov.getContext('2d'); g.clearRect(0, 0, AW, AH);
+    if (last && last.show){
+      g.lineWidth = 3;
+      if (last.detPoly){ g.strokeStyle = '#ffb703'; g.setLineDash([8, 6]); poly(g, last.detPoly); g.setLineDash([]); }
+      if (last.dims) drawBox(g, last.dims.X, last.dims.Y, last.dims.H, '#06d6a0');
+    } else if (cal.P){
+      // guía: esquina de la escuadra
+      const o = Core.project(cal.P, [0,0,0]), x = Core.project(cal.P, [150,0,0]), y = Core.project(cal.P, [0,150,0]);
+      g.strokeStyle = 'rgba(46,196,182,.9)'; g.lineWidth = 3; g.beginPath(); g.moveTo(x[0], x[1]); g.lineTo(o[0], o[1]); g.lineTo(y[0], y[1]); g.stroke();
+    }
+    const r = roiPx(); if (r){ g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; g.strokeRect(r.x, r.y, r.w, r.h); }
+  }
+  requestAnimationFrame(drawLive);
+}
+function poly(g, p){ g.beginPath(); p.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); g.stroke(); }
+function drawBox(g, X, Y, H, color){
+  const c = Core.boxCorners(X, Y, H).map(p => Core.project(cal.P, p));
+  const E = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+  g.strokeStyle = color; g.lineWidth = 3; g.beginPath();
+  for (const [a, b] of E){ g.moveTo(c[a][0], c[a][1]); g.lineTo(c[b][0], c[b][1]); }
+  g.stroke();
+}
+
+// ---------- Fondo (solo en memoria, se captura en cada turno) ----------
+async function captureBg(){
+  if (!(await startCam())) return;
+  await lockExposure(false); await sleep(600);
+  bg = grabFrameAvg(4);
+  if (cfg.lock === '1') await lockExposure(true);
+  const t = 'Fondo capturado ' + new Date().toLocaleTimeString();
+  $('fondoEstado').textContent = t; $('fondoEstado2').textContent = t; renderSteps();
+}
+$('btnFondo').onclick = captureBg; $('btnFondo2').onclick = captureBg;
+$('btnCam').onclick = startCam;
+
+// ---------- Medición ----------
+async function measureOnce(){
+  const ex = []; const r = roiPx();
+  if (r) ex.push({ x: r.x - r.w * 0.2, y: r.y - r.h * 0.4, w: r.w * 1.4, h: r.h * 1.8 });
+  return Core.analyze(grab(), bg, AW, AH, cal.P, { thr:+cfg.thr, exclude:ex });
+}
+async function runMeasure(target){
+  if (!(await startCam())) return null;
+  if (!cal.P){ msg(target, 'Falta calibrar la cámara (pestaña Calibrar).', 'err'); return null; }
+  if (!bg || bg.width !== AW || bg.height !== AH){ msg(target, 'Falta capturar el fondo vacío (inicio de turno).', 'err'); return null; }
+  msg(target, 'Leyendo peso y midiendo…', '');
+  const peso = cal.roi ? await stableWeight() : null;
+  const a = await measureOnce(); await sleep(250); const b = await measureOnce();
+  if (a.error || b.error){ msg(target, (a.error || b.error) + ' Revisa que la caja esté en la esquina y sin manos en la imagen.', 'err'); return null; }
+  const d = { X:(a.X + b.X) / 2, Y:(a.Y + b.Y) / 2, H:(a.H + b.H) / 2 };
+  const spread = Math.max(Math.abs(a.X - b.X), Math.abs(a.Y - b.Y), Math.abs(a.H - b.H));
+  const res = Math.max(a.res, b.res);
+  last = { show:true, dims:d, detPoly:b.detPoly };
+  const warns = [];
+  if (b.border) warns.push('La caja toca el borde de la imagen: puede quedar cortada.');
+  if (res > +cfg.resMax) warns.push(`El contorno no calza bien (${res.toFixed(1)} px). Revisa que la caja esté contra ambos brazos de la escuadra y sin objetos alrededor.`);
+  if (spread > +cfg.tol) warns.push(`Medición inestable (${spread.toFixed(1)} mm entre capturas). Repite.`);
+  return { d, peso, res, spread, warns, ok: !warns.length };
+}
+
+$('btnMedir').onclick = async () => {
+  $('btnMedir').disabled = true; msg('envioMsg', '');
+  try {
+    const r = await runMeasure('medirMsg'); if (!r) return;
+    const L = Math.round(Math.max(r.d.X, r.d.Y)), A = Math.round(Math.min(r.d.X, r.d.Y)), H = Math.round(r.d.H);
+    $('vL').value = L; $('vA').value = A; $('vH').value = H;
+    $('vP').value = r.peso != null ? r.peso.toFixed(+cfg.dec) : '';
+    last.auto = { L, A, H, P: $('vP').value };
+    const extra = r.peso == null ? '<br>No se leyó el peso: digítalo desde el visor.' : '';
+    msg('medirMsg', r.ok ? 'Medición OK. Revisa el contorno verde y confirma.' + extra : r.warns.join('<br>') + extra, r.ok && r.peso != null ? 'ok' : 'warn');
+    $('btnConfirmar').disabled = false; $('btnConfirmar').focus();
+  } finally { $('btnMedir').disabled = false; }
+};
+function limpiar(){ last = null; ['vL','vA','vH','vP'].forEach(i => $(i).value = ''); $('btnConfirmar').disabled = true; $('btnConfirmar').textContent = 'Confirmar y enviar'; msg('medirMsg', ''); }
+$('btnRepetir').onclick = () => { limpiar(); msg('envioMsg', ''); };
+
+// ---------- Envío directo a Google Sheets (no se guarda nada en el celular) ----------
+let enviados = 0;
+$('btnConfirmar').onclick = async () => {
+  const sku = $('sku').value.trim();
+  const L = +$('vL').value, A = +$('vA').value, H = +$('vH').value, P = $('vP').value.trim().replace(',', '.');
+  if (!cfg.url){ msg('envioMsg', 'Falta la URL de la planilla en Ajustes.', 'err'); return; }
+  if (!sku){ msg('envioMsg', 'Falta el código.', 'err'); $('sku').focus(); return; }
+  if (!(L > 0 && A > 0 && H > 0)){ msg('envioMsg', 'Faltan medidas.', 'err'); return; }
+  const au = last?.auto || {};
+  const rec = {
+    id: last?.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    fecha: new Date().toLocaleString('sv-SE').replace(' ', 'T'),
+    sku, largo: Math.max(L, A), ancho: Math.min(L, A), alto: H,
+    volumen_m3: +(L * A * H / 1e9).toFixed(6),
+    peso_kg: P === '' ? '' : +(+P).toFixed(3),
+    metodo_medidas: !last?.auto ? 'manual' : (au.L === L && au.A === A && au.H === H ? 'auto' : 'editado'),
+    metodo_peso: P === '' ? 'sin peso' : (au.P === $('vP').value ? 'auto' : 'manual'),
+    operador: cfg.oper
+  };
+  if (last) last.id = rec.id;            // si se reintenta, la planilla no lo duplica
+  $('btnConfirmar').disabled = true; msg('envioMsg', 'Enviando…', '');
+  const r = await send(rec);
+  if (r.ok){
+    enviados++;
+    msg('envioMsg', `Enviado: ${sku} (${rec.largo} × ${rec.ancho} × ${rec.alto} mm${rec.peso_kg !== '' ? ', ' + rec.peso_kg + ' kg' : ''})` +
+        (r.duplicadoSku ? '<br>Atención: este código ya tenía una medición en la planilla.' : '') +
+        (r.sinConfirmar ? '<br>Enviado sin confirmación de la planilla: revisa que haya llegado.' : '') +
+        `<br><span class="mut">Enviados en esta sesión: ${enviados}</span>`, r.duplicadoSku || r.sinConfirmar ? 'warn' : 'ok');
+    limpiar(); $('sku').value = ''; $('sku').focus();
+  } else {
+    msg('envioMsg', `No se pudo enviar (${r.error}). Los datos siguen en pantalla: revisa la conexión y toca Reintentar.`, 'err');
+    $('btnConfirmar').disabled = false; $('btnConfirmar').textContent = 'Reintentar envío';
+  }
+};
+async function send(rec){
+  const body = JSON.stringify(Object.assign({ token: cfg.token }, rec));
+  if (!navigator.onLine) return { ok:false, error:'sin internet' };
+  try {
+    const r = await fetch(cfg.url, { method:'POST', body });
+    const j = await r.json();
+    return j.ok ? { ok:true, duplicadoSku: !!j.duplicadoSku } : { ok:false, error: j.error || 'la planilla rechazó el registro' };
+  } catch(e){
+    try { await fetch(cfg.url, { method:'POST', mode:'no-cors', body }); return { ok:true, sinConfirmar:true }; }
+    catch(e2){ return { ok:false, error:'sin conexión con la planilla' }; }
+  }
+}
+window.addEventListener('beforeunload', e => { if (!$('btnConfirmar').disabled){ e.preventDefault(); e.returnValue = ''; } });
+
+// ---------- Código de barras ----------
+$('btnScan').onclick = async () => {
+  if (!('BarcodeDetector' in window)){ $('scanEstado').textContent = 'Este celular no lee códigos con la cámara: digítalo o usa un lector Bluetooth.'; $('sku').focus(); return; }
+  if (!(await startCam())) return;
+  if (scanning){ scanning = false; return; }
+  scanning = true; $('btnScan').textContent = 'Detener'; $('scanEstado').textContent = 'Muestra la etiqueta a la cámara…';
+  const det = new BarcodeDetector({ formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','qr_code','data_matrix'] });
+  const t0 = Date.now();
+  while (scanning && Date.now() - t0 < 20000){
+    try { const c = await det.detect($('video')); if (c.length){ $('sku').value = c[0].rawValue; $('scanEstado').textContent = 'Código leído: ' + c[0].rawValue; break; } } catch(e){}
+    await sleep(120);
+  }
+  if (scanning && !$('sku').value) $('scanEstado').textContent = 'No se leyó el código. Intenta de nuevo o digítalo.';
+  scanning = false; $('btnScan').textContent = 'Leer';
+};
+$('sku').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnMedir').click(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && document.activeElement === $('btnConfirmar')) { e.preventDefault(); $('btnConfirmar').click(); } });
+
+// ---------- Calibración: puntos del cubo ----------
+const ORDER = ['1 · Superior trasera izquierda','2 · Superior trasera derecha','3 · Superior delantera derecha','4 · Superior delantera izquierda','5 · Inferior delantera izquierda','6 · Inferior delantera derecha','7 · Inferior trasera derecha'];
+let tapPos = null, tapImg = null;
+const tapCv = $('tapCanvas'), tg = tapCv.getContext('2d');
+function posOffset(p){ return p === 'B' ? [+cfg.Dx, 0] : p === 'C' ? [0, +cfg.Dy] : [0, 0]; }
+document.querySelectorAll('[data-pos]').forEach(b => b.onclick = async () => {
+  if (!(await startCam())) return;
+  tapPos = b.dataset.pos; tapImg = grab();
+  cal.pts[tapPos] = []; cal.aw = AW; cal.ah = AH;
+  tapCv.width = AW; tapCv.height = AH; tapCv.classList.add('has');
+  const txt = { A:'Cubo en la esquina de la escuadra.', B:`Cubo contra el brazo trasero, con su cara izquierda en la marca ${cfg.Dx} mm.`, C:`Cubo contra el brazo izquierdo, con su cara trasera en la marca ${cfg.Dy} mm.` }[tapPos];
+  msg('posInstr', `Posición ${tapPos}: ${txt} Si el cubo no estaba así, acomódalo y vuelve a tomar la foto.`, '');
+  drawTap();
+});
+function drawTap(){
+  if (!tapImg) return;
+  tg.putImageData(tapImg, 0, 0);
+  const pts = cal.pts[tapPos] || [];
+  pts.forEach((p, i) => {
+    tg.fillStyle = '#ef476f'; tg.beginPath(); tg.arc(p[0], p[1], 6, 0, 7); tg.fill();
+    tg.fillStyle = '#fff'; tg.font = 'bold 22px system-ui'; tg.fillText(String(i + 1), p[0] + 9, p[1] - 9);
+  });
+  $('tapHint').textContent = pts.length < 7 ? 'Toca la esquina ' + ORDER[pts.length] : `Posición ${tapPos} completa ✔`;
+  renderSteps();
+}
+function attachTap(cv, onDown, onMove, onUp){
+  const toImg = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); onDown(toImg(e), e); });
+  cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') onMove(toImg(e), e); });
+  cv.addEventListener('pointerup', e => onUp(toImg(e), e));
+}
+const loupe = $('loupe'), lg = loupe.getContext('2d');
+function showLoupe(srcCv, p, e){
+  loupe.style.display = 'block';
+  loupe.style.left = (e.clientX - 75) + 'px'; loupe.style.top = (e.clientY - 190) + 'px';
+  const z = 4, s = 150 / z;
+  lg.imageSmoothingEnabled = false; lg.clearRect(0, 0, 150, 150);
+  lg.drawImage(srcCv, p[0] - s / 2, p[1] - s / 2, s, s, 0, 0, 150, 150);
+  lg.strokeStyle = '#2ec4b6'; lg.lineWidth = 1; lg.beginPath(); lg.moveTo(75, 0); lg.lineTo(75, 150); lg.moveTo(0, 75); lg.lineTo(150, 75); lg.stroke();
+}
+attachTap(tapCv,
+  (p, e) => { if (tapImg && (cal.pts[tapPos] || []).length < 7) showLoupe(tapCv, p, e); },
+  (p, e) => { if (tapImg && (cal.pts[tapPos] || []).length < 7) showLoupe(tapCv, p, e); },
+  (p) => { loupe.style.display = 'none'; if (!tapImg) return; const a = cal.pts[tapPos]; if (a.length < 7){ a.push(p); store.set('cal', cal); drawTap(); } });
+$('btnUndo').onclick = () => { if (tapPos && cal.pts[tapPos]?.length){ cal.pts[tapPos].pop(); store.set('cal', cal); drawTap(); } };
+$('btnCalc').onclick = () => {
+  const W = [], I = [];
+  for (const p of ['A','B','C']){
+    const pts = cal.pts[p]; if (!pts || pts.length !== 7) continue;
+    const [dx, dy] = posOffset(p);
+    Core.cubeCorners(+cfg.S, dx, dy).forEach((w, i) => { W.push(w); I.push(pts[i]); });
+  }
+  if (W.length < 14){ msg('calMsg', 'Necesitas al menos 2 posiciones completas (ideal las 3).', 'err'); return; }
+  const r = Core.dlt(W, I);
+  cal.P = r.P; cal.rms = r.rms; store.set('cal', cal);
+  const kind = r.rms < 1.5 ? 'ok' : r.rms < 3 ? 'warn' : 'err';
+  msg('calMsg', `Calibración lista. Error medio ${r.rms.toFixed(2)} px (máx ${r.max.toFixed(2)} px). ` +
+      (kind === 'ok' ? 'Muy bien.' : kind === 'warn' ? 'Aceptable; si puedes, marca los puntos con más cuidado.' : 'Alto: revisa el orden de los puntos y las posiciones del cubo.'), kind);
+  renderSteps();
+};
+
+// ---------- Calibración: visor ----------
+const roiCv = $('roiCanvas'), rg = roiCv.getContext('2d'); let roiImg = null, roiStart = null, roiTmp = null;
+$('btnVisorFoto').onclick = async () => { if (!(await startCam())) return; roiImg = grab(); roiCv.width = AW; roiCv.height = AH; roiCv.classList.add('has'); drawRoi(); };
+function drawRoi(){
+  if (!roiImg) return; rg.putImageData(roiImg, 0, 0);
+  const r = roiTmp || roiPx(); if (r){ rg.strokeStyle = '#2ec4b6'; rg.lineWidth = 3; rg.strokeRect(r.x, r.y, r.w, r.h); }
+}
+attachTap(roiCv,
+  (p) => { roiStart = p; },
+  (p, e) => { if (!roiStart) return; roiTmp = { x:Math.min(p[0], roiStart[0]), y:Math.min(p[1], roiStart[1]), w:Math.abs(p[0] - roiStart[0]), h:Math.abs(p[1] - roiStart[1]) }; drawRoi(); showLoupe(roiCv, p, e); },
+  () => { loupe.style.display = 'none'; if (roiTmp && roiTmp.w > 10 && roiTmp.h > 5){ cal.roi = { x:roiTmp.x / AW, y:roiTmp.y / AH, w:roiTmp.w / AW, h:roiTmp.h / AH }; store.set('cal', cal); } roiStart = null; roiTmp = null; drawRoi(); renderSteps(); });
+['cDig','cDec','cSlant'].forEach(id => $(id).addEventListener('change', () => { cfg.dig = +$('cDig').value; cfg.dec = +$('cDec').value; cfg.slant = +$('cSlant').value; store.set('cfg', cfg); }));
+setInterval(() => {
+  if (!document.querySelector('#t-calibrar.on') || !stream || !cal.roi) return;
+  const r = readWeight(); if (!r) return;
+  $('ocrLive').textContent = r.value != null ? r.value.toFixed(+cfg.dec) + ' kg' : `? (${r.text.replace(/ /g, '·')})`;
+  const dc = $('ocrDebug'), dg = dc.getContext('2d');
+  dc.width = ocrCv.width; dc.height = ocrCv.height; dg.drawImage(ocrCv, 0, 0);
+  for (const b of r.boxes){ dg.strokeStyle = b.lit ? '#06d6a0' : '#ef476f'; dg.lineWidth = 1; dg.strokeRect(b.x, b.y, b.w, b.h); }
+  dc.style.width = Math.min(400, dc.width * 3) + 'px';
+}, 300);
+
+// ---------- Verificación ----------
+$('btnVerif').onclick = async () => {
+  const r = await runMeasure('verifMsg'); if (!r) return;
+  const S = +cfg.S, e = [r.d.X - S, r.d.Y - S, r.d.H - S];
+  const worst = Math.max(...e.map(Math.abs));
+  const ok = worst <= +cfg.tol;
+  msg('verifMsg', `Cubo medido: ${r.d.X.toFixed(1)} × ${r.d.Y.toFixed(1)} × ${r.d.H.toFixed(1)} mm (error máx ${worst.toFixed(1)} mm). ` +
+      (ok ? 'Dentro de tolerancia: puedes operar.' : 'Fuera de tolerancia: revisa el soporte y recalibra.') + (r.warns.length ? '<br>' + r.warns.join('<br>') : ''), ok ? 'ok' : 'err');
+  cal.verif = { t: Date.now(), ok }; store.set('cal', cal); renderSteps();
+};
+
+function renderSteps(){
+  const st = [
+    ['Fondo', !!bg],
+    ['Cubo A', cal.pts.A?.length === 7], ['Cubo B', cal.pts.B?.length === 7], ['Cubo C', cal.pts.C?.length === 7],
+    ['Geometría' + (cal.rms != null ? ` (${cal.rms.toFixed(1)} px)` : ''), !!cal.P],
+    ['Visor', !!cal.roi], ['Verificación', !!cal.verif?.ok]
+  ];
+  $('calSteps').innerHTML = st.map(([t, d]) => `<span class="${d ? 'done' : ''}">${d ? '✔ ' : ''}${t}</span>`).join('');
+}
+
+// ---------- Ajustes ----------
+const MAP = { cUrl:'url', cToken:'token', cOper:'oper', cTol:'tol', cS:'S', cDx:'Dx', cDy:'Dy', cThr:'thr', cRes:'resMax', cLock:'lock', cDig:'dig', cDec:'dec', cSlant:'slant' };
+function loadCfg(){ for (const [id, k] of Object.entries(MAP)) $(id).value = cfg[k]; $('lblDx').textContent = cfg.Dx; $('lblDy').textContent = cfg.Dy; }
+$('btnGuardar').onclick = () => {
+  for (const [id, k] of Object.entries(MAP)) cfg[k] = $(id).value.trim();
+  const ok = store.set('cfg', cfg); loadCfg();
+  $('guardMsg').textContent = ok ? 'Guardado ✔' : 'No se pudo guardar en el celular';
+};
+$('btnTest').onclick = async () => {
+  $('btnGuardar').click();
+  if (!cfg.url){ msg('testMsg', 'Ingresa la URL.', 'err'); return; }
+  try { const r = await fetch(cfg.url); const j = await r.json(); msg('testMsg', j.ok ? 'Conexión OK con la planilla.' : 'Respondió con error.', j.ok ? 'ok' : 'err'); }
+  catch(e){ msg('testMsg', 'No se pudo confirmar la conexión desde aquí. Haz una medición de prueba y revisa si llega a la planilla.', 'warn'); }
+};
+
+try { localStorage.removeItem('cub_bg'); localStorage.removeItem('cub_regs'); } catch(e){}
+loadCfg(); renderSteps();
+window.Core = Core;
+</script>
+</body>
+</html>
